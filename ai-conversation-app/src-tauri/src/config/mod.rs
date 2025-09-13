@@ -220,15 +220,7 @@ impl AppConfig {
         Err(anyhow::anyhow!("Configuration file not found in any of the expected locations: {:?}", possible_paths))
     }
     
-    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = serde_yaml::to_string(self)
-            .context("Failed to serialize configuration")?;
-        
-        fs::write(path, content)
-            .context("Failed to write configuration file")?;
-        
-        Ok(())
-    }
+
 }
 
 // Global configuration instance
@@ -239,8 +231,4 @@ pub fn init_config() -> Result<()> {
     let config = AppConfig::load_default()?;
     CONFIG.set(config).map_err(|_| anyhow::anyhow!("Configuration already initialized"))?;
     Ok(())
-}
-
-pub fn get_config() -> &'static AppConfig {
-    CONFIG.get().expect("Configuration not initialized")
 }

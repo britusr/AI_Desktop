@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Canvas, useFrame, extend } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -9,6 +9,13 @@ extend(THREE);
 import { useCharacterAnimation, useLipSync } from '../../hooks';
 import { VisemeData } from '../../types/audio';
 import { ReadyPlayerMeGLTF, AvatarMesh, GLTF } from '../../types/three';
+import { ViewportSettings } from '../SidePanel/SidePanel';
+
+interface EnvironmentSettings {
+  preset: string;
+  intensity: number;
+  background: boolean;
+}
 
 interface CharacterProps {
   avatarUrl?: string;
@@ -18,6 +25,10 @@ interface CharacterProps {
   emotion?: string;
   scale?: number;
   position?: [number, number, number];
+  viewportSettings?: ViewportSettings;
+  environmentSettings?: EnvironmentSettings;
+  onViewportChange?: (settings: ViewportSettings) => void;
+  onEnvironmentChange?: (settings: EnvironmentSettings) => void;
 }
 
 interface AvatarModelProps {
@@ -64,17 +75,22 @@ const AvatarModel: React.FC<AvatarModelProps> = ({
     setAvatarMeshes(meshes);
 
     // Setup default animations if available
-     if (gltf.animations && gltf.animations.length > 0) {
-       gltf.animations.forEach((clip: THREE.AnimationClip) => {
-         const action = mixer.clipAction(clip);
-         actionsRef.current[clip.name] = action;
-         
-         // Auto-play idle animations
-         if (clip.name.toLowerCase().includes('idle')) {
-           action.play();
-         }
-       });
-     }
+    if (gltf.animations && gltf.animations.length > 0) {
+      console.log('Available animations:', gltf.animations.map(clip => clip.name));
+      gltf.animations.forEach((clip: THREE.AnimationClip) => {
+        const action = mixer.clipAction(clip);
+        actionsRef.current[clip.name] = action;
+        
+        // Auto-play idle animations
+        if (clip.name.toLowerCase().includes('idle')) {
+          action.setLoop(THREE.LoopRepeat, Infinity);
+          action.play();
+          console.log('Playing idle animation:', clip.name);
+        }
+      });
+    } else {
+      console.log('No animations found in GLTF model');
+    }
 
     return () => {
       if (mixer && typeof mixer.dispose === 'function') {
@@ -163,17 +179,48 @@ const AvatarModel: React.FC<AvatarModelProps> = ({
     });
   }, [avatarMeshes, emotion]);
   
+  // Handle animation changes
+  useEffect(() => {
+    if (!mixerRef.current || !actionsRef.current) return;
+    
+    // Stop all current actions
+    Object.values(actionsRef.current).forEach(action => {
+      action.stop();
+    });
+    
+    // Play the appropriate animation based on current state
+    const animationName = currentAnimation.toLowerCase();
+    const availableAnimations = Object.keys(actionsRef.current);
+    
+    // Try to find matching animation
+    let targetAction = null;
+    if (availableAnimations.some(name => name.toLowerCase().includes(animationName))) {
+      const matchingName = availableAnimations.find(name => name.toLowerCase().includes(animationName));
+      targetAction = actionsRef.current[matchingName!];
+    } else if (availableAnimations.some(name => name.toLowerCase().includes('idle'))) {
+      const idleName = availableAnimations.find(name => name.toLowerCase().includes('idle'));
+      targetAction = actionsRef.current[idleName!];
+    }
+    
+    if (targetAction) {
+      targetAction.reset();
+      targetAction.setLoop(THREE.LoopRepeat, Infinity);
+      targetAction.play();
+      console.log('Playing animation:', currentAnimation);
+    }
+  }, [currentAnimation]);
+
   // Animation frame update
   useFrame((state, delta) => {
     if (mixerRef.current) {
       mixerRef.current.update(delta * animationSpeed);
     }
 
-    // Add subtle breathing animation
+    // Add subtle breathing animation only if no specific animations are playing
     if (meshRef.current && currentAnimation === 'idle') {
       const time = state.clock.elapsedTime;
-      meshRef.current.position.y = Math.sin(time * 2) * 0.01;
-      meshRef.current.rotation.y = Math.sin(time * 0.5) * 0.02;
+      meshRef.current.position.y += Math.sin(time * 2) * 0.005;
+      meshRef.current.rotation.y = Math.sin(time * 0.5) * 0.01;
     }
 
     // Add blinking animation
@@ -204,7 +251,7 @@ const AvatarModel: React.FC<AvatarModelProps> = ({
   });
 
   return (
-    <group ref={meshRef} position={position} scale={scale} {...({} as any)}>
+    <group ref={meshRef} position={[position[0], position[1] + 1, position[2]]} scale={scale} {...({} as any)}>
       <primitive object={gltf.scene} {...({} as any)} />
     </group>
   );
@@ -212,7 +259,7 @@ const AvatarModel: React.FC<AvatarModelProps> = ({
 
 const Floor: React.FC = () => {
   return (
-    <mesh receiveShadow position={[0, -2, 0]} rotation={[-Math.PI / 2, 0, 0]} {...({} as any)}>
+    <mesh receiveShadow position={[0, -2.01, 0]} rotation={[-Math.PI / 2, 0, 0]} {...({} as any)}>
       <planeGeometry args={[20, 20]} {...({} as any)} />
       <meshStandardMaterial 
         color="#f0f0f0" 
@@ -231,17 +278,77 @@ const Character: React.FC<CharacterProps> = ({
   isSpeaking,
   emotion = 'neutral',
   scale = 1,
-  position = [0, -1, 0]
+  position = [0, -2, 0],
+  viewportSettings,
+  environmentSettings,
+  onViewportChange,
+  onEnvironmentChange
 }) => {
+  const [currentViewportSettings, setCurrentViewportSettings] = useState<ViewportSettings>({
+    cameraPosition: [0, 1, 7],
+    cameraFov: 50,
+    orbitTarget: [0, -1, 0],
+    minDistance: 4,
+    maxDistance: 8
+  });
+
+  const [currentEnvironmentSettings, setCurrentEnvironmentSettings] = useState<EnvironmentSettings>({
+    preset: 'studio',
+    intensity: 1,
+    background: true
+  });
+
+  const orbitControlsRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
+
   const defaultAvatarUrl = useMemo(() => {
     return avatarUrl || 'https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb';
   }, [avatarUrl]);
 
+  // Update viewport settings in real-time
+  useEffect(() => {
+    if (viewportSettings) {
+      setCurrentViewportSettings(viewportSettings);
+    }
+  }, [viewportSettings]);
+
+  // Update environment settings in real-time
+  useEffect(() => {
+    if (environmentSettings) {
+      setCurrentEnvironmentSettings(environmentSettings);
+    }
+  }, [environmentSettings]);
+
+  // Sync camera changes back to parent
+  const handleCameraChange = () => {
+    if (orbitControlsRef.current && cameraRef.current && onViewportChange) {
+      const camera = cameraRef.current;
+      const controls = orbitControlsRef.current;
+      
+      const newSettings: ViewportSettings = {
+        cameraPosition: [camera.position.x, camera.position.y, camera.position.z],
+        cameraFov: camera.fov,
+        orbitTarget: [controls.target.x, controls.target.y, controls.target.z],
+        minDistance: controls.minDistance,
+        maxDistance: controls.maxDistance
+      };
+      
+      setCurrentViewportSettings(newSettings);
+      onViewportChange(newSettings);
+    }
+  };
+
   return (
     <Canvas
       shadows
-      camera={{ position: [0, 1.5, 3], fov: 50 }}
+      camera={{ 
+        position: currentViewportSettings.cameraPosition, 
+        fov: currentViewportSettings.cameraFov
+      }}
       style={{ width: '100%', height: '100vh' }}
+      onCreated={({ camera }) => {
+        cameraRef.current = camera;
+      }}
     >
       <ambientLight intensity={0.4} {...({} as any)} />
       <directionalLight
@@ -259,7 +366,11 @@ const Character: React.FC<CharacterProps> = ({
       />
       <pointLight position={[-5, 5, 5]} intensity={0.5} {...({} as any)} />
       
-      <Environment preset="studio" />
+      <Environment 
+        preset={currentEnvironmentSettings.preset as any}
+        intensity={currentEnvironmentSettings.intensity}
+        background={currentEnvironmentSettings.background}
+      />
       
       <Floor />
       
@@ -282,14 +393,17 @@ const Character: React.FC<CharacterProps> = ({
       />
       
       <OrbitControls
+        ref={orbitControlsRef}
         enablePan={false}
         enableZoom={true}
         enableRotate={true}
-        minDistance={2}
-        maxDistance={8}
+        minDistance={currentViewportSettings.minDistance}
+        maxDistance={currentViewportSettings.maxDistance}
         minPolarAngle={Math.PI / 6}
         maxPolarAngle={Math.PI / 2}
-        target={[0, 0, 0]}
+        target={currentViewportSettings.orbitTarget}
+        onChange={handleCameraChange}
+        onEnd={handleCameraChange}
       />
     </Canvas>
   );

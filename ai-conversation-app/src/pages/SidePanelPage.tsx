@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import SidePanel from "../components/SidePanel/SidePanel";
+import { emit } from "@tauri-apps/api/event";
+import SidePanel, { ViewportSettings, EnvironmentSettings } from "../components/SidePanel/SidePanel";
 import { VisemeData, ProcessingMode } from "../types/audio";
 
 // Extend Window interface for Tauri
@@ -17,6 +18,19 @@ function SidePanelPage() {
   const [processingMode, setProcessingMode] = useState<ProcessingMode>(ProcessingMode.Idle);
   const [transcript, setTranscript] = useState<string>("");
   const [response, setResponse] = useState<string>("");
+  const [viewportSettings, setViewportSettings] = useState<ViewportSettings>({
+    cameraPosition: [0, 1, 7],
+    cameraFov: 50,
+    orbitTarget: [0, -1, 0],
+    minDistance: 4,
+    maxDistance: 8
+  });
+
+  const [environmentSettings, setEnvironmentSettings] = useState<EnvironmentSettings>({
+    preset: 'studio',
+    intensity: 1,
+    background: true
+  });
 
   // Real audio processing functions
   const toggleListening = async () => {
@@ -86,16 +100,62 @@ function SidePanelPage() {
 
   const changeEmotion = (emotion: string) => {
     setCurrentEmotion(emotion);
-    // Send emotion change to main window
+    // Send emotion change to main window via event
     if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
-      invoke('change_character_emotion', { emotion });
+      emit('emotion-changed', emotion);
     }
   };
 
-  // Initialize audio system
+  const handleViewportChange = (settings: ViewportSettings) => {
+    setViewportSettings(settings);
+    localStorage.setItem('viewportSettings', JSON.stringify(settings));
+    // Send viewport changes to main window via event
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+      emit('viewport-settings-change', settings);
+    }
+  };
+
+  const handleEnvironmentChange = (settings: EnvironmentSettings) => {
+    setEnvironmentSettings(settings);
+    localStorage.setItem('environmentSettings', JSON.stringify(settings));
+    // Send environment changes to main window via event
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+      emit('environment-settings-change', settings);
+    }
+  };
+
+  const handleSaveSettings = () => {
+    // Save to localStorage
+    localStorage.setItem('viewportSettings', JSON.stringify(viewportSettings));
+    localStorage.setItem('environmentSettings', JSON.stringify(environmentSettings));
+    
+    // Emit current settings to main window to ensure synchronization
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+      emit('viewport-settings-change', viewportSettings);
+      emit('environment-settings-change', environmentSettings);
+    }
+    
+    console.log('Settings saved and synchronized successfully!');
+  };
+
+  // Initialize audio system and load saved settings
   useEffect(() => {
     const initializeAudio = async () => {
       try {
+        // Load saved viewport settings
+        const savedSettings = localStorage.getItem('viewportSettings');
+        if (savedSettings) {
+          const parsedSettings = JSON.parse(savedSettings);
+          setViewportSettings(parsedSettings);
+        }
+
+        // Load saved environment settings
+        const savedEnvironmentSettings = localStorage.getItem('environmentSettings');
+        if (savedEnvironmentSettings) {
+          const parsedEnvironmentSettings = JSON.parse(savedEnvironmentSettings);
+          setEnvironmentSettings(parsedEnvironmentSettings);
+        }
+
         // Check if we're running in Tauri environment
         if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
           await invoke('initialize_audio_system');
@@ -119,9 +179,14 @@ function SidePanelPage() {
       processingMode={processingMode}
       transcript={transcript}
       response={response}
+      viewportSettings={viewportSettings}
+      environmentSettings={environmentSettings}
       onToggleListening={toggleListening}
       onToggleSpeaking={toggleSpeaking}
       onChangeEmotion={changeEmotion}
+      onViewportChange={handleViewportChange}
+      onEnvironmentChange={handleEnvironmentChange}
+      onSaveSettings={handleSaveSettings}
     />
   );
 }

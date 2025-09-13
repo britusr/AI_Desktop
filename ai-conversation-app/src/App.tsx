@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import Character from "./components/Character/Character";
 import { VisemeData, ProcessingMode } from "./types/audio";
+import { ViewportSettings, EnvironmentSettings } from "./components/SidePanel/SidePanel";
 import "./App.css";
 
 // Extend Window interface for Tauri
@@ -20,6 +22,19 @@ function App() {
   const [transcript, setTranscript] = useState<string>("");
   // @ts-ignore
   const [response, setResponse] = useState<string>("");
+  const [viewportSettings, setViewportSettings] = useState<ViewportSettings>({
+    cameraPosition: [0, 1, 7],
+    cameraFov: 50,
+    orbitTarget: [0, -1, 0],
+    minDistance: 4,
+    maxDistance: 8
+  });
+
+  const [environmentSettings, setEnvironmentSettings] = useState<EnvironmentSettings>({
+    preset: 'studio',
+    intensity: 1,
+    background: true
+  });
 
   // Real audio processing functions
   const toggleListening = async () => {
@@ -109,24 +124,71 @@ function App() {
     }, 200);
   };
 
-  const changeEmotion = (emotion: string) => {
+  const handleEmotionChange = (emotion: string) => {
     setCurrentEmotion(emotion);
   };
 
-  // Initialize audio system and listen for emotion changes
+  const handleViewportChange = (newSettings: ViewportSettings) => {
+    setViewportSettings(newSettings);
+    localStorage.setItem('viewportSettings', JSON.stringify(newSettings));
+  };
+
+  const handleEnvironmentChange = (settings: EnvironmentSettings) => {
+    setEnvironmentSettings(settings);
+    // Save to localStorage for persistence
+    localStorage.setItem('environmentSettings', JSON.stringify(settings));
+  };
+
+  // Initialize audio system and listen for changes from sidepanel
   useEffect(() => {
     const initializeAudio = async () => {
       try {
+        // Load saved viewport settings
+        const savedSettings = localStorage.getItem('viewportSettings');
+        if (savedSettings) {
+          const parsedSettings = JSON.parse(savedSettings);
+          setViewportSettings(parsedSettings);
+        }
+
+        // Load saved environment settings
+        const savedEnvironmentSettings = localStorage.getItem('environmentSettings');
+        if (savedEnvironmentSettings) {
+          const parsedEnvironmentSettings = JSON.parse(savedEnvironmentSettings);
+          setEnvironmentSettings(parsedEnvironmentSettings);
+        }
+
         // Check if we're running in Tauri environment
         if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
           await invoke('initialize_audio_system');
           console.log('Audio system initialized');
           
           // Listen for emotion changes from sidepanel
-          const { listen } = await import('@tauri-apps/api/event');
-          await listen('emotion-change', (event) => {
-            setCurrentEmotion(event.payload as string);
+          const unlistenEmotion = await listen('emotion-changed', (event) => {
+            const emotion = event.payload as string;
+            console.log('Received emotion change:', emotion);
+            setCurrentEmotion(emotion);
           });
+          
+          // Listen for viewport settings changes
+          const unlistenViewport = await listen('viewport-settings-change', (event) => {
+            const settings = event.payload as ViewportSettings;
+            setViewportSettings(settings);
+            localStorage.setItem('viewportSettings', JSON.stringify(settings));
+          });
+          
+          // Listen for environment settings changes
+          const unlistenEnvironment = await listen('environment-settings-change', (event) => {
+            const settings = event.payload as EnvironmentSettings;
+            console.log('Received environment change:', settings);
+            setEnvironmentSettings(settings);
+            localStorage.setItem('environmentSettings', JSON.stringify(settings));
+          });
+          
+          return () => {
+            unlistenEmotion();
+            unlistenViewport();
+            unlistenEnvironment();
+          };
         } else {
           console.log('Running in development mode - Tauri functions not available');
         }
@@ -142,12 +204,17 @@ function App() {
     <div className="app fullscreen">
       <div className="character-section fullscreen-character">
         <Character
+          avatarUrl="https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb"
           isListening={isListening}
           isSpeaking={isSpeaking}
           emotion={currentEmotion}
           visemeData={visemeData}
-          scale={2.0}
-          position={[0, -0.5, 0]}
+          scale={1}
+          position={[0, -1, 0]}
+          viewportSettings={viewportSettings}
+          environmentSettings={environmentSettings}
+          onViewportChange={handleViewportChange}
+          onEnvironmentChange={handleEnvironmentChange}
         />
       </div>
     </div>

@@ -1,10 +1,8 @@
 use std::sync::Mutex;
-use tauri::{State, Manager, Window, AppHandle, Emitter};
+use tauri::{State, Manager, AppHandle, Emitter};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState, GlobalShortcutExt};
 
 mod config;
-
-use config::AppConfig;
 
 #[derive(Default)]
 struct AudioState(Mutex<bool>);
@@ -167,6 +165,29 @@ async fn change_character_emotion(emotion: String, app: AppHandle) -> Result<Str
     }
 }
 
+#[tauri::command]
+async fn update_viewport_settings(settings: serde_json::Value, app: AppHandle) -> Result<String, String> {
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.emit("viewport-settings-change", settings.clone())
+            .map_err(|e| format!("Failed to emit viewport settings change: {}", e))?;
+        Ok("Viewport settings updated".to_string())
+    } else {
+        Err("Main window not found".to_string())
+    }
+}
+
+#[tauri::command]
+async fn open_devtools(app: AppHandle) -> Result<String, String> {
+    // Try to open devtools for both main and sidepanel windows
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window.open_devtools();
+    }
+    if let Some(sidepanel_window) = app.get_webview_window("sidepanel") {
+        sidepanel_window.open_devtools();
+    }
+    Ok("Developer tools opened".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize configuration
@@ -188,7 +209,9 @@ pub fn run() {
             stop_speaking,
             synthesize_speech,
             show_sidepanel,
-            change_character_emotion
+            change_character_emotion,
+            update_viewport_settings,
+            open_devtools
         ])
         .setup(|app| {
             // Register global shortcut for toggling sidepanel
