@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ai-conversation-app",
+  "version": "0.1.0",
+  "identifier": "ae.bcube.aibot",
+  "build": {
+    "beforeDevCommand": "yarn dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "yarn build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AI Conversation",
+        "url": "/",
+        "fullscreen": true,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "resizable": false,
+        "skipTaskbar": false,
+        "closable": true
+      },
+      {
+        "label": "sidepanel",
+        "title": "AI Assistant Panel",
+        "url": "/sidepanel",
+        "width": 350,
+        "height": 600,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "resizable": true,
+        "visible": true,
+        "skipTaskbar": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; worker-src 'self' blob:;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
