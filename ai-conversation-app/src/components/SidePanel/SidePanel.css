@@ -341,9 +341,11 @@
   margin-top: 15px;
   display: flex;
   justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.save-btn {
+.save-btn, .debug-btn {
   padding: 10px 20px;
   border: none;
   border-radius: 20px;
@@ -357,14 +359,22 @@
   min-width: 140px;
 }
 
-.save-btn:hover {
+.save-btn:hover, .debug-btn:hover {
   background: rgba(255, 255, 255, 0.3);
   transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
-.save-btn:active {
+.save-btn:active, .debug-btn:active {
   transform: translateY(0);
+}
+
+.debug-btn {
+  background: rgba(255, 152, 0, 0.3);
+}
+
+.debug-btn:hover {
+  background: rgba(255, 152, 0, 0.5);
 }
 
 .conversation-panel {

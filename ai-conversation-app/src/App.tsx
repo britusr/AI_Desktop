@@ -179,7 +179,6 @@ function App() {
           // Listen for environment settings changes
           const unlistenEnvironment = await listen('environment-settings-change', (event) => {
             const settings = event.payload as EnvironmentSettings;
-            console.log('Received environment change:', settings);
             setEnvironmentSettings(settings);
             localStorage.setItem('environmentSettings', JSON.stringify(settings));
           });
